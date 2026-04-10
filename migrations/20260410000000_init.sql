@@ -3,6 +3,18 @@
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
+-- ── Fingerprint Profiles ──
+CREATE TABLE fingerprint_profiles (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name                TEXT NOT NULL UNIQUE,
+    tls_profile         JSONB NOT NULL DEFAULT '{}',
+    http2_settings      JSONB NOT NULL DEFAULT '{}',
+    header_order        JSONB NOT NULL DEFAULT '[]',
+    user_agent_template TEXT NOT NULL DEFAULT '',
+    extra_headers       JSONB NOT NULL DEFAULT '{}',
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- ── Accounts (upstream AI provider credentials) ──
 CREATE TABLE accounts (
     id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -35,18 +47,6 @@ CREATE TABLE api_keys (
     status            TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','disabled')),
     expires_at        TIMESTAMPTZ,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- ── Fingerprint Profiles ──
-CREATE TABLE fingerprint_profiles (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name                TEXT NOT NULL UNIQUE,
-    tls_profile         JSONB NOT NULL DEFAULT '{}',
-    http2_settings      JSONB NOT NULL DEFAULT '{}',
-    header_order        JSONB NOT NULL DEFAULT '[]',
-    user_agent_template TEXT NOT NULL DEFAULT '',
-    extra_headers       JSONB NOT NULL DEFAULT '{}',
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- ── Usage Logs ──
