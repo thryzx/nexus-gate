@@ -1,7 +1,8 @@
 FROM node:20-alpine AS frontend
 WORKDIR /build/web/admin-spa
 COPY web/admin-spa/package.json web/admin-spa/package-lock.json* ./
-RUN npm ci --ignore-scripts 2>/dev/null || npm install
+RUN npm config set registry https://registry.npmmirror.com && \
+    (npm ci --ignore-scripts 2>/dev/null || npm install)
 COPY web/admin-spa/ ./
 RUN npm run build
 
