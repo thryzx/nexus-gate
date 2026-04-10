@@ -1,6 +1,7 @@
 use crate::api;
 use crate::config::AppConfig;
-use crate::middleware::{auth, rate_limit, request_id};
+use crate::error::AppError;
+use crate::middleware::{admin_auth, auth, rate_limit, request_id};
 use crate::state::AppState;
 use anyhow::Result;
 use axum::{
@@ -55,7 +56,11 @@ pub fn build_router(state: AppState) -> Router {
             "/admin/fingerprints",
             post(api::admin::create_fingerprint_profile),
         )
-        .route("/admin/stats", get(api::admin::stats));
+        .route("/admin/stats", get(api::admin::stats))
+        .layer(axum_mw::from_fn_with_state(
+            state.clone(),
+            admin_auth::require_admin_jwt,
+        ));
 
     // ── Compose everything ──
     let api_routes = Router::new()
@@ -74,7 +79,8 @@ pub fn build_router(state: AppState) -> Router {
     Router::new()
         .merge(health)
         .merge(api_routes)
-        .nest("", admin)
+        .merge(admin)
+        .fallback(|| async { AppError::NotFound })
         .layer(axum_mw::from_fn(request_id::inject))
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new().gzip(true))
