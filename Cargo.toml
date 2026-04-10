@@ -11,7 +11,7 @@ license = "MIT"
 axum = { version = "0.7", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }
 tower = { version = "0.4", features = ["full"] }
-tower-http = { version = "0.5", features = ["cors", "trace", "compression-gzip"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "compression-gzip", "fs"] }
 http = "1"
 hyper = { version = "1", features = ["full"] }
 bytes = "1"
@@ -54,6 +54,7 @@ aes-gcm = "0.10"
 hmac = "0.12"
 base64 = "0.22"
 rand = "0.8"
+hex = "0.4"
 
 # Utilities
 uuid = { version = "1", features = ["v4", "serde"] }

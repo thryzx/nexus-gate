@@ -48,6 +48,19 @@ pub struct CreateApiKeyInput {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UpdateApiKeyInput {
+    pub name: Option<String>,
+    pub permissions: Option<Vec<String>>,
+    pub restricted_models: Option<Vec<String>>,
+    pub daily_cost_limit: Option<f64>,
+    pub total_cost_limit: Option<f64>,
+    pub max_concurrency: Option<i32>,
+    pub rate_limit_rpm: Option<i32>,
+    pub status: Option<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

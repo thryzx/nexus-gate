@@ -11,3 +11,5 @@ logs/
 .DS_Store
 .idea/
 .vscode/
+web/admin-spa/node_modules/
+web/admin-spa/dist/
