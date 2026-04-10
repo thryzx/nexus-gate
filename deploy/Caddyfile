@@ -1,0 +1,54 @@
+# ─── nexus-gate Caddy 反向代理配置 ───
+#
+# 两种模式选一种：
+#
+# 【模式A】Cloudflare 代理 (推荐) — 域名 DNS 指向 VPS，开启橙色云朵：
+#   Cloudflare 终止 TLS → Caddy 只做 HTTP 反代
+#   取消注释下面 :80 块，注释掉域名块
+#
+# 【模式B】Caddy 自动 HTTPS — 域名 DNS 直接指向 VPS（灰色云朵/无CF）：
+#   Caddy 自动申请 Let's Encrypt 证书
+#   取消注释域名块，注释掉 :80 块
+
+# ── 模式A: Cloudflare 代理模式（默认启用）──
+:80 {
+	reverse_proxy app:7900
+
+	# 健康检查端点
+	handle /health {
+		reverse_proxy app:7900
+	}
+
+	# 安全 headers
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
+
+# ── 模式B: 直接 HTTPS（Caddy 自动证书）──
+# 使用时取消注释下面的块，注释掉上面的 :80 块
+# 将 gate.example.com 替换为你的实际域名
+#
+# gate.example.com {
+# 	reverse_proxy app:7900
+#
+# 	header {
+# 		X-Content-Type-Options nosniff
+# 		X-Frame-Options DENY
+# 		Referrer-Policy no-referrer
+# 		-Server
+# 	}
+#
+# 	log {
+# 		output stdout
+# 		format console
+# 	}
+# }

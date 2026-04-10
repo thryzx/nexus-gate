@@ -1,0 +1,99 @@
+# ─── nexus-gate production deployment ───
+# Usage:
+#   cp .env.example .env  &&  vi .env   # 修改密钥和域名
+#   docker compose -f docker-compose.prod.yml up -d
+#   ./scripts/verify-deploy.sh           # 验证所有端点
+
+services:
+  app:
+    build: .
+    container_name: nexus-gate
+    environment:
+      DATABASE_URL: postgres://nexus:${POSTGRES_PASSWORD}@postgres:5432/nexus_gate
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      RUST_LOG: ${RUST_LOG:-nexus_gate=info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:7900/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    # 不直接暴露端口，通过 Caddy 反代
+    expose:
+      - "7900"
+    networks:
+      - internal
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexus-gate-pg
+    environment:
+      POSTGRES_USER: nexus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: nexus_gate
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    # 生产环境不暴露到宿主机
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    container_name: nexus-gate-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    volumes:
+      - redis_data:/data
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - internal
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: nexus-gate-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - internal
+
+volumes:
+  pg_data:
+  redis_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  internal:
+    driver: bridge

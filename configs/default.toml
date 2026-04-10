@@ -1,0 +1,46 @@
+# ─── nexus-gate default configuration ───
+
+[server]
+host = "0.0.0.0"
+port = 7900
+request_timeout_secs = 600
+max_body_bytes = 104857600   # 100 MB
+
+[database]
+url = "postgres://nexus:nexus@localhost:5432/nexus_gate"
+max_connections = 20
+min_connections = 2
+
+[redis]
+url = "redis://localhost:6379"
+pool_size = 10
+
+[auth]
+jwt_secret = "change-me"
+encryption_key = "change-me-32-chars-exactly!!!!!"
+session_ttl_hours = 24
+
+[upstream.claude]
+base_url = "https://api.anthropic.com"
+api_version = "2023-06-01"
+
+[upstream.openai]
+base_url = "https://api.openai.com"
+
+[upstream.gemini]
+base_url = "https://generativelanguage.googleapis.com"
+
+[scheduler]
+sticky_session_ttl_secs = 1123200  # 13 days (CRS uses 13-15 day TTL)
+concurrency_cleanup_interval_secs = 60
+overload_cooldown_secs = 300
+rate_limit_cooldown_secs = 300
+concurrency_lease_secs = 300  # CRS default: 300s (5 min)
+
+[rate_limit]
+global_rpm = 600
+per_key_rpm = 60
+
+[logging]
+level = "info"
+format = "json"        # "json" | "pretty"

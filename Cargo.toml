@@ -1,0 +1,76 @@
+[package]
+name = "nexus-gate"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+description = "High-performance API gateway with fingerprint rotation"
+license = "MIT"
+
+[dependencies]
+# Web framework
+axum = { version = "0.7", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.4", features = ["full"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "compression-gzip"] }
+http = "1"
+hyper = { version = "1", features = ["full"] }
+bytes = "1"
+futures = "0.3"
+tokio-stream = "0.1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Database
+sqlx = { version = "0.8", features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "postgres",
+    "uuid",
+    "chrono",
+    "json",
+    "migrate",
+] }
+redis = { version = "0.27", features = ["tokio-comp", "aio"] }
+
+# HTTP client (upstream relay)
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "stream",
+    "rustls-tls",
+    "hickory-dns",
+    "socks",
+] }
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Cryptography
+sha2 = "0.10"
+aes-gcm = "0.10"
+hmac = "0.12"
+base64 = "0.22"
+rand = "0.8"
+
+# Utilities
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+dotenvy = "0.15"
+thiserror = "2"
+anyhow = "1"
+async-trait = "0.1"
+
+[dev-dependencies]
+axum-test = "16"
+mockall = "0.13"
+tokio-test = "0.4"
+tempfile = "3"
+wiremock = "0.6"
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1

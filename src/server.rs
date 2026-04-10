@@ -1,0 +1,102 @@
+use crate::api;
+use crate::config::AppConfig;
+use crate::middleware::{auth, rate_limit, request_id};
+use crate::state::AppState;
+use anyhow::Result;
+use axum::{
+    middleware as axum_mw,
+    routing::{get, post},
+    Router,
+};
+use std::net::SocketAddr;
+use tokio::net::TcpListener;
+use tower_http::compression::CompressionLayer;
+use tower_http::cors::CorsLayer;
+use tower_http::trace::TraceLayer;
+
+/// Build the full Axum router with all routes and middleware.
+pub fn build_router(state: AppState) -> Router {
+    // ── Public health route (no auth) ──
+    let health = Router::new().route("/health", get(api::health::check));
+
+    // ── Claude-compatible endpoints ──
+    let claude = Router::new()
+        .route("/v1/messages", post(api::claude::messages))
+        .route("/v1/messages/count_tokens", post(api::claude::count_tokens));
+
+    // ── OpenAI-compatible endpoints ──
+    let openai = Router::new()
+        .route("/v1/chat/completions", post(api::openai::chat_completions))
+        .route("/v1/responses", post(api::openai::responses));
+
+    // ── Gemini-compatible endpoints ──
+    let gemini = Router::new()
+        .route(
+            "/v1beta/models/:model_action",
+            post(api::gemini::model_action),
+        )
+        .route("/v1beta/models", get(api::gemini::list_models));
+
+    // ── Admin endpoints (JWT auth) ──
+    let admin = Router::new()
+        .route("/admin/accounts", get(api::admin::list_accounts))
+        .route("/admin/accounts", post(api::admin::create_account))
+        .route("/admin/accounts/:id", get(api::admin::get_account))
+        .route("/admin/accounts/:id", axum::routing::put(api::admin::update_account))
+        .route("/admin/accounts/:id", axum::routing::delete(api::admin::delete_account))
+        .route("/admin/keys", get(api::admin::list_keys))
+        .route("/admin/keys", post(api::admin::create_key))
+        .route("/admin/keys/:id", axum::routing::delete(api::admin::delete_key))
+        .route(
+            "/admin/fingerprints",
+            get(api::admin::list_fingerprint_profiles),
+        )
+        .route(
+            "/admin/fingerprints",
+            post(api::admin::create_fingerprint_profile),
+        )
+        .route("/admin/stats", get(api::admin::stats));
+
+    // ── Compose everything ──
+    let api_routes = Router::new()
+        .merge(claude)
+        .merge(openai)
+        .merge(gemini)
+        .layer(axum_mw::from_fn_with_state(
+            state.clone(),
+            auth::require_api_key,
+        ))
+        .layer(axum_mw::from_fn_with_state(
+            state.clone(),
+            rate_limit::check,
+        ));
+
+    Router::new()
+        .merge(health)
+        .merge(api_routes)
+        .nest("", admin)
+        .layer(axum_mw::from_fn(request_id::inject))
+        .layer(TraceLayer::new_for_http())
+        .layer(CompressionLayer::new().gzip(true))
+        .layer(CorsLayer::permissive())
+        .with_state(state)
+}
+
+/// Start the server.
+pub async fn run(config: AppConfig) -> Result<()> {
+    let addr = SocketAddr::new(config.server.host.parse()?, config.server.port);
+
+    let state = AppState::new(config).await?;
+
+    // Run database migrations
+    sqlx::migrate!("./migrations").run(&state.db).await?;
+    tracing::info!("database migrations applied");
+
+    let app = build_router(state);
+
+    tracing::info!(%addr, "listening");
+    let listener = TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
+
+    Ok(())
+}
