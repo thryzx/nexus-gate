@@ -167,12 +167,12 @@ pub async fn dashboard(
 
     // Usage stats
     let usage_total: (i64, i64, i64, f64) = sqlx::query_as(
-        "SELECT COALESCE(COUNT(*),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(cost_usd),0) FROM usage_logs"
+        "SELECT COALESCE(COUNT(*),0)::BIGINT, COALESCE(SUM(input_tokens),0)::BIGINT, COALESCE(SUM(output_tokens),0)::BIGINT, COALESCE(SUM(cost_usd),0)::FLOAT8 FROM usage_logs"
     ).fetch_one(&state.db).await.map_err(|e| AppError::Internal(e.into()))?;
 
     let today = Utc::now().date_naive();
     let today_usage: (i64, f64) = sqlx::query_as(
-        "SELECT COALESCE(COUNT(*),0), COALESCE(SUM(cost_usd),0) FROM usage_logs WHERE created_at::date = $1"
+        "SELECT COALESCE(COUNT(*),0)::BIGINT, COALESCE(SUM(cost_usd),0)::FLOAT8 FROM usage_logs WHERE created_at::date = $1"
     ).bind(today).fetch_one(&state.db).await.map_err(|e| AppError::Internal(e.into()))?;
 
     Ok(Json(DashboardResponse {
@@ -521,10 +521,10 @@ pub async fn usage_trends(
     let rows = sqlx::query_as::<_, (NaiveDate, i64, i64, i64, f64)>(
         r#"
         SELECT created_at::date as date,
-               COUNT(*),
-               COALESCE(SUM(input_tokens), 0),
-               COALESCE(SUM(output_tokens), 0),
-               COALESCE(SUM(cost_usd), 0)
+               COUNT(*)::BIGINT,
+               COALESCE(SUM(input_tokens), 0)::BIGINT,
+               COALESCE(SUM(output_tokens), 0)::BIGINT,
+               COALESCE(SUM(cost_usd), 0)::FLOAT8
         FROM usage_logs
         WHERE created_at >= $1
         GROUP BY created_at::date
@@ -568,8 +568,8 @@ pub async fn usage_by_model(
 
     let rows = sqlx::query_as::<_, (String, i64, i64, i64, f64)>(
         r#"
-        SELECT model, COUNT(*), COALESCE(SUM(input_tokens),0),
-               COALESCE(SUM(output_tokens),0), COALESCE(SUM(cost_usd),0)
+        SELECT model, COUNT(*)::BIGINT, COALESCE(SUM(input_tokens),0)::BIGINT,
+               COALESCE(SUM(output_tokens),0)::BIGINT, COALESCE(SUM(cost_usd),0)::FLOAT8
         FROM usage_logs WHERE created_at >= $1
         GROUP BY model ORDER BY COUNT(*) DESC
         "#,
