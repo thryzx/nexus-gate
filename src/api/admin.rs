@@ -134,6 +134,8 @@ pub struct UsageSummary {
     pub total_output_tokens: i64,
     pub total_cost_usd: f64,
     pub today_requests: i64,
+    pub today_input_tokens: i64,
+    pub today_output_tokens: i64,
     pub today_cost_usd: f64,
 }
 
@@ -171,8 +173,8 @@ pub async fn dashboard(
     ).fetch_one(&state.db).await.map_err(|e| AppError::Internal(e.into()))?;
 
     let today = Utc::now().date_naive();
-    let today_usage: (i64, f64) = sqlx::query_as(
-        "SELECT COALESCE(COUNT(*),0)::BIGINT, COALESCE(SUM(cost_usd),0)::FLOAT8 FROM usage_logs WHERE created_at::date = $1"
+    let today_usage: (i64, i64, i64, f64) = sqlx::query_as(
+        "SELECT COALESCE(COUNT(*),0)::BIGINT, COALESCE(SUM(input_tokens),0)::BIGINT, COALESCE(SUM(output_tokens),0)::BIGINT, COALESCE(SUM(cost_usd),0)::FLOAT8 FROM usage_logs WHERE created_at::date = $1"
     ).bind(today).fetch_one(&state.db).await.map_err(|e| AppError::Internal(e.into()))?;
 
     Ok(Json(DashboardResponse {
@@ -191,7 +193,9 @@ pub async fn dashboard(
             total_output_tokens: usage_total.2,
             total_cost_usd: usage_total.3,
             today_requests: today_usage.0,
-            today_cost_usd: today_usage.1,
+            today_input_tokens: today_usage.1,
+            today_output_tokens: today_usage.2,
+            today_cost_usd: today_usage.3,
         },
     }))
 }

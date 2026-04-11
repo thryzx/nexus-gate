@@ -299,6 +299,12 @@ export const getBalanceScript = (name) =>
   request.get(`/admin/balance-scripts/${name}`)
 export const updateBalanceScript = (name, data) =>
   request.put(`/admin/balance-scripts/${name}`, data)
+export const createBalanceScript = (data) =>
+  request.post('/admin/balance-scripts', data)
+export const deleteBalanceScript = (name) =>
+  request.delete(`/admin/balance-scripts/${name}`)
+export const testBalanceScript = (name) =>
+  request.post(`/admin/balance-scripts/${name}/test`)
 
 // ── Public API Stats ──
 export const getPublicModels = () => request.get('/apiStats/models')
