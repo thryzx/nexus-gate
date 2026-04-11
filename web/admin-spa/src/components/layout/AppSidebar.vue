@@ -22,6 +22,11 @@ const menuItems = [
   { path: '/api-keys', icon: '🔑', label: 'API Keys' },
   { path: '/usage', icon: '📈', label: '用量统计' },
   { path: '/fingerprints', icon: '🔏', label: '指纹配置' },
+  { path: '/quota-cards', icon: '🎫', label: '额度卡' },
+  { path: '/user-management', icon: '👥', label: '用户管理' },
+  { path: '/request-details', icon: '📋', label: '请求详情' },
+  { path: '/balance-scripts', icon: '💰', label: '余额脚本' },
+  { path: '/api-stats', icon: '📉', label: 'API 统计' },
   { path: '/settings', icon: '⚙️', label: '系统设置' }
 ]
 </script>

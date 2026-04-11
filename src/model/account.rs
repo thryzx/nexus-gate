@@ -7,14 +7,22 @@ use uuid::Uuid;
 pub struct AccountRecord {
     pub id: Uuid,
     pub name: String,
-    pub platform: String,       // "claude" | "openai" | "gemini" | "bedrock" | "azure"
-    pub account_type: String,   // "oauth" | "apikey" | "bedrock"
+    /// Platform: claude, claude-console, bedrock, ccr, gemini, gemini-api,
+    /// openai, openai-responses, azure-openai, droid
+    pub platform: String,
+    pub account_type: String,   // "oauth" | "apikey" | "bedrock" | "cookie"
     pub credentials_enc: String, // AES-encrypted JSON
-    pub status: String,         // "active" | "unavailable" | "disabled"
+    pub status: String,         // "active" | "unavailable" | "disabled" | "error" | "blocked" | "paused"
     pub priority: i32,
     pub max_concurrency: i32,
     pub proxy_url: Option<String>,
     pub fingerprint_profile_id: Option<Uuid>,
+    pub description: Option<String>,
+    pub schedulable: Option<bool>,
+    pub group_id: Option<Uuid>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub rate_limit: Option<i32>,
+    pub extra_config: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -29,6 +37,12 @@ pub struct CreateAccountInput {
     pub max_concurrency: Option<i32>,
     pub proxy_url: Option<String>,
     pub fingerprint_profile_id: Option<Uuid>,
+    pub description: Option<String>,
+    pub schedulable: Option<bool>,
+    pub group_id: Option<Uuid>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub rate_limit: Option<i32>,
+    pub extra_config: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -39,6 +53,13 @@ pub struct UpdateAccountInput {
     pub max_concurrency: Option<i32>,
     pub proxy_url: Option<String>,
     pub fingerprint_profile_id: Option<Uuid>,
+    pub description: Option<String>,
+    pub schedulable: Option<bool>,
+    pub group_id: Option<Uuid>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub rate_limit: Option<i32>,
+    pub extra_config: Option<serde_json::Value>,
+    pub credentials: Option<String>,
 }
 
 #[cfg(test)]

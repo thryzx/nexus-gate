@@ -231,8 +231,8 @@ pub async fn create_account(
 
     let row = sqlx::query_as::<_, AccountRecord>(
         r#"
-        INSERT INTO accounts (id, name, platform, account_type, credentials_enc, status, priority, max_concurrency, proxy_url, fingerprint_profile_id)
-        VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $8, $9)
+        INSERT INTO accounts (id, name, platform, account_type, credentials_enc, status, priority, max_concurrency, proxy_url, fingerprint_profile_id, description, schedulable, group_id, expires_at, rate_limit, extra_config)
+        VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         RETURNING *
         "#,
     )
@@ -245,6 +245,12 @@ pub async fn create_account(
     .bind(input.max_concurrency.unwrap_or(1))
     .bind(&input.proxy_url)
     .bind(&input.fingerprint_profile_id)
+    .bind(input.description.as_deref().unwrap_or(""))
+    .bind(input.schedulable.unwrap_or(true))
+    .bind(&input.group_id)
+    .bind(input.expires_at)
+    .bind(input.rate_limit.unwrap_or(0))
+    .bind(input.extra_config.as_ref().unwrap_or(&serde_json::json!({})))
     .fetch_one(&state.db)
     .await
     .map_err(|e| AppError::Internal(e.into()))?;
@@ -257,6 +263,18 @@ pub async fn update_account(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateAccountInput>,
 ) -> Result<Json<AccountRecord>, AppError> {
+    // Optionally update credentials
+    if let Some(ref creds) = input.credentials {
+        let encrypted_creds =
+            crate::util::crypto::encrypt(&state.config.auth.encryption_key, creds)?;
+        sqlx::query("UPDATE accounts SET credentials_enc = $2, updated_at = NOW() WHERE id = $1")
+            .bind(id)
+            .bind(&encrypted_creds)
+            .execute(&state.db)
+            .await
+            .map_err(|e| AppError::Internal(e.into()))?;
+    }
+
     let row = sqlx::query_as::<_, AccountRecord>(
         r#"
         UPDATE accounts
@@ -266,6 +284,12 @@ pub async fn update_account(
             max_concurrency = COALESCE($5, max_concurrency),
             proxy_url = COALESCE($6, proxy_url),
             fingerprint_profile_id = COALESCE($7, fingerprint_profile_id),
+            description = COALESCE($8, description),
+            schedulable = COALESCE($9, schedulable),
+            group_id = $10,
+            expires_at = $11,
+            rate_limit = COALESCE($12, rate_limit),
+            extra_config = COALESCE($13, extra_config),
             updated_at = NOW()
         WHERE id = $1
         RETURNING *
@@ -278,6 +302,12 @@ pub async fn update_account(
     .bind(input.max_concurrency)
     .bind(&input.proxy_url)
     .bind(&input.fingerprint_profile_id)
+    .bind(&input.description)
+    .bind(input.schedulable)
+    .bind(&input.group_id)
+    .bind(input.expires_at)
+    .bind(input.rate_limit)
+    .bind(&input.extra_config)
     .fetch_optional(&state.db)
     .await
     .map_err(|e| AppError::Internal(e.into()))?

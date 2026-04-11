@@ -250,6 +250,12 @@ mod tests {
             max_concurrency: 5,
             proxy_url: None,
             fingerprint_profile_id: None,
+            description: None,
+            schedulable: None,
+            group_id: None,
+            expires_at: None,
+            rate_limit: None,
+            extra_config: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
