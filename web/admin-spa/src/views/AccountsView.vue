@@ -3,12 +3,32 @@
     <div class="flex justify-between items-center mb-6">
       <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-100">账户管理</h2>
       <div class="flex gap-2">
+        <el-button @click="refreshAll" :loading="store.loading">
+          <el-icon class="mr-1"><Refresh /></el-icon>刷新
+        </el-button>
         <el-button type="success" @click="showOAuth = true">
           <el-icon class="mr-1"><Link /></el-icon>OAuth 认证
         </el-button>
         <el-button type="primary" @click="openCreate">
           <el-icon class="mr-1"><Plus /></el-icon>添加账户
         </el-button>
+      </div>
+    </div>
+
+    <!-- Stats Summary -->
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-6">
+      <div
+        v-for="p in platformList"
+        :key="p.key"
+        class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 text-center cursor-pointer transition-all hover:shadow-md"
+        :class="{ 'ring-2 ring-blue-400': activePlatform === p.key }"
+        @click="activePlatform = p.key"
+      >
+        <div class="text-xl font-bold text-gray-800 dark:text-gray-100">{{ getPlatformCount(p.key) }}</div>
+        <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ p.label }}</div>
+        <div class="text-xs mt-1">
+          <span class="text-green-500">{{ getActiveCount(p.key) }} 在线</span>
+        </div>
       </div>
     </div>
 
@@ -31,15 +51,57 @@
           </span>
         </template>
 
+        <!-- Filters Bar -->
+        <div class="flex gap-3 mb-4 flex-wrap items-center">
+          <el-input
+            v-model="searchText"
+            placeholder="搜索名称 / 描述"
+            clearable
+            style="width: 200px"
+            :prefix-icon="Search"
+          />
+          <el-select v-model="statusFilter" placeholder="状态" clearable style="width: 120px">
+            <el-option label="在线" value="active" />
+            <el-option label="禁用" value="disabled" />
+            <el-option label="不可用" value="unavailable" />
+            <el-option label="错误" value="error" />
+            <el-option label="封禁" value="blocked" />
+          </el-select>
+          <el-select v-model="groupFilter" placeholder="分组" clearable style="width: 140px">
+            <el-option v-for="g in store.groups" :key="g.id" :value="g.id" :label="g.name" />
+          </el-select>
+          <el-select v-model="sortBy" placeholder="排序" style="width: 140px">
+            <el-option label="名称" value="name" />
+            <el-option label="优先级" value="priority" />
+            <el-option label="状态" value="status" />
+            <el-option label="并发" value="max_concurrency" />
+          </el-select>
+          <div class="flex-1" />
+          <el-button
+            v-if="selectionMode"
+            type="danger"
+            size="small"
+            :disabled="selectedIds.length === 0"
+            @click="handleBatchDelete"
+          >
+            批量删除 ({{ selectedIds.length }})
+          </el-button>
+          <el-button size="small" :type="selectionMode ? 'warning' : 'default'" @click="selectionMode = !selectionMode">
+            {{ selectionMode ? '退出选择' : '批量操作' }}
+          </el-button>
+        </div>
+
         <div class="bg-white dark:bg-gray-800 rounded-lg overflow-hidden">
           <el-table
-            :data="getCurrentPlatformAccounts()"
+            :data="filteredAccounts"
             v-loading="store.loading"
             stripe
             class="w-full"
             row-key="id"
+            @selection-change="handleSelectionChange"
           >
-            <el-table-column prop="name" label="名称" min-width="140" show-overflow-tooltip />
+            <el-table-column v-if="selectionMode" type="selection" width="45" />
+            <el-table-column prop="name" label="名称" min-width="140" show-overflow-tooltip sortable />
             <el-table-column prop="status" label="状态" width="100">
               <template #default="{ row }">
                 <el-tag
@@ -62,10 +124,18 @@
                 />
               </template>
             </el-table-column>
-            <el-table-column prop="priority" label="优先级" width="80" />
+            <el-table-column prop="priority" label="优先级" width="80" sortable />
             <el-table-column prop="max_concurrency" label="并发" width="60" />
+            <el-table-column label="分组" width="100">
+              <template #default="{ row }">
+                <el-tag v-if="getGroupName(row.group_id)" size="small" type="info">
+                  {{ getGroupName(row.group_id) }}
+                </el-tag>
+                <span v-else class="text-gray-400 text-xs">-</span>
+              </template>
+            </el-table-column>
             <el-table-column prop="description" label="描述" min-width="120" show-overflow-tooltip />
-            <el-table-column prop="proxy_url" label="代理" min-width="120" show-overflow-tooltip />
+            <el-table-column prop="proxy_url" label="代理" min-width="100" show-overflow-tooltip />
             <el-table-column label="操作" width="220" fixed="right">
               <template #default="{ row }">
                 <el-button size="small" text type="primary" @click="editRow(row)">编辑</el-button>
@@ -170,8 +240,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAccountsStore } from '@/stores/accounts'
 import { useFingerprintsStore } from '@/stores/fingerprints'
-import { ElMessage } from 'element-plus'
-import { Plus, Link } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus, Link, Search, Refresh } from '@element-plus/icons-vue'
 import AccountForm from '@/components/accounts/AccountForm.vue'
 import OAuthFlow from '@/components/accounts/OAuthFlow.vue'
 
@@ -197,6 +267,16 @@ const editing = ref(null)
 const editingPlatform = ref('claude')
 const editFormData = ref(null)
 const saving = ref(false)
+
+// Filters
+const searchText = ref('')
+const statusFilter = ref('')
+const groupFilter = ref('')
+const sortBy = ref('name')
+
+// Batch
+const selectionMode = ref(false)
+const selectedIds = ref([])
 
 const showCreate = ref(false)
 const showDialog = computed({
@@ -240,9 +320,79 @@ function getPlatformCount(platform) {
   return cfg ? (store.stateMap[cfg.stateKey]?.value?.length || 0) : 0
 }
 
+function getActiveCount(platform) {
+  const cfg = store.PLATFORM_CONFIG[platform]
+  if (!cfg) return 0
+  const list = store.stateMap[cfg.stateKey]?.value || []
+  return list.filter((a) => a.status === 'active').length
+}
+
 function getCurrentPlatformAccounts() {
   const cfg = store.PLATFORM_CONFIG[activePlatform.value]
   return cfg ? (store.stateMap[cfg.stateKey]?.value || []) : []
+}
+
+function getGroupName(groupId) {
+  if (!groupId) return null
+  const g = store.groups.find((g) => g.id === groupId)
+  return g?.name || null
+}
+
+const filteredAccounts = computed(() => {
+  let list = getCurrentPlatformAccounts()
+
+  if (searchText.value) {
+    const q = searchText.value.toLowerCase()
+    list = list.filter(
+      (a) =>
+        a.name?.toLowerCase().includes(q) ||
+        a.description?.toLowerCase().includes(q)
+    )
+  }
+
+  if (statusFilter.value) {
+    list = list.filter((a) => a.status === statusFilter.value)
+  }
+
+  if (groupFilter.value) {
+    list = list.filter((a) => a.group_id === groupFilter.value)
+  }
+
+  const key = sortBy.value
+  list = [...list].sort((a, b) => {
+    if (key === 'priority') return (b.priority || 0) - (a.priority || 0)
+    if (key === 'max_concurrency') return (b.max_concurrency || 0) - (a.max_concurrency || 0)
+    if (key === 'status') return (a.status || '').localeCompare(b.status || '')
+    return (a.name || '').localeCompare(b.name || '')
+  })
+
+  return list
+})
+
+function handleSelectionChange(rows) {
+  selectedIds.value = rows.map((r) => r.id)
+}
+
+async function handleBatchDelete() {
+  try {
+    await ElMessageBox.confirm(
+      `确认删除选中的 ${selectedIds.value.length} 个账户？此操作不可恢复。`,
+      '批量删除'
+    )
+    for (const id of selectedIds.value) {
+      await handleDeleteById(id)
+    }
+    selectedIds.value = []
+    selectionMode.value = false
+    ElMessage.success('批量删除完成')
+  } catch {
+    /* cancelled */
+  }
+}
+
+async function refreshAll() {
+  await store.fetchAll()
+  ElMessage.success('刷新完成')
 }
 
 function statusType(s) {
@@ -309,14 +459,17 @@ function capitalize(s) {
 }
 
 async function handleDelete(row) {
+  await handleDeleteById(row.id)
+}
+
+async function handleDeleteById(id) {
   try {
     const platform = activePlatform.value
     const cfg = store.PLATFORM_CONFIG[platform]
     const deleteFnName = `delete${capitalize(cfg.stateKey.replace('Accounts', ''))}`
-    await store[deleteFnName]?.(row.id)
-    ElMessage.success('已删除')
-  } catch (e) {
-    ElMessage.error('删除失败')
+    await store[deleteFnName]?.(id)
+  } catch {
+    /* ignore individual failures in batch */
   }
 }
 

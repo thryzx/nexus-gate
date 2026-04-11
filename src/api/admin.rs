@@ -338,7 +338,7 @@ pub async fn list_keys(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<ApiKeyRecord>>, AppError> {
     let rows =
-        sqlx::query_as::<_, ApiKeyRecord>("SELECT * FROM api_keys ORDER BY created_at DESC")
+        sqlx::query_as::<_, ApiKeyRecord>("SELECT * FROM api_keys WHERE deleted_at IS NULL ORDER BY created_at DESC")
             .fetch_all(&state.db)
             .await
             .map_err(|e| AppError::Internal(e.into()))?;
@@ -398,7 +398,7 @@ pub async fn update_key(
         r#"
         UPDATE api_keys
         SET name = COALESCE($2, name),
-            permissions = COALESCE($3, permissions::jsonb)::text,
+            permissions = COALESCE($3, permissions),
             daily_cost_limit = COALESCE($4, daily_cost_limit),
             total_cost_limit = COALESCE($5, total_cost_limit),
             max_concurrency = COALESCE($6, max_concurrency),
@@ -412,7 +412,7 @@ pub async fn update_key(
     )
     .bind(id)
     .bind(&input.name)
-    .bind(input.permissions.as_ref().map(|p| serde_json::to_string(p).unwrap_or_default()))
+    .bind(input.permissions.as_ref().map(|p| serde_json::to_value(p).unwrap_or_default()))
     .bind(input.daily_cost_limit)
     .bind(input.total_cost_limit)
     .bind(input.max_concurrency)
@@ -432,7 +432,7 @@ pub async fn delete_key(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<DeleteResult>, AppError> {
-    let result = sqlx::query("DELETE FROM api_keys WHERE id = $1")
+    let result = sqlx::query("UPDATE api_keys SET deleted_at = NOW(), status = 'disabled' WHERE id = $1 AND deleted_at IS NULL")
         .bind(id)
         .execute(&state.db)
         .await
@@ -786,6 +786,97 @@ pub async fn update_setting(
     .map_err(|e| AppError::Internal(e.into()))?;
 
     Ok(Json(serde_json::json!({ "success": true })))
+}
+
+// ───────────────────── Batch API Key Creation ─────────────────────
+
+#[derive(Deserialize)]
+pub struct BatchCreateKeysInput {
+    pub name_prefix: String,
+    pub count: usize,
+    pub permissions: Vec<String>,
+    pub daily_cost_limit: Option<f64>,
+    pub total_cost_limit: Option<f64>,
+    pub max_concurrency: Option<i32>,
+    pub rate_limit_rpm: Option<i32>,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Serialize)]
+pub struct BatchKeyResult {
+    pub id: Uuid,
+    pub name: String,
+    pub key: String,
+}
+
+pub async fn batch_create_keys(
+    State(state): State<AppState>,
+    Json(input): Json<BatchCreateKeysInput>,
+) -> Result<Json<Vec<BatchKeyResult>>, AppError> {
+    if input.count == 0 || input.count > 500 {
+        return Err(AppError::BadRequest("count must be 1-500".into()));
+    }
+
+    let mut results = Vec::with_capacity(input.count);
+    let perms_json = serde_json::to_value(&input.permissions).unwrap_or_default();
+    let models_json = serde_json::json!([]);
+
+    for i in 1..=input.count {
+        let raw_key = crate::service::apikey::generate_raw_key();
+        let key_hash = crate::middleware::auth::hash_key(&raw_key);
+        let id = Uuid::new_v4();
+        let name = format!("{}-{}", input.name_prefix, i);
+
+        sqlx::query(
+            "INSERT INTO api_keys (id, key_hash, name, permissions, daily_cost_limit, total_cost_limit, max_concurrency, rate_limit_rpm, restricted_models, status, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', $10)",
+        )
+        .bind(id)
+        .bind(&key_hash)
+        .bind(&name)
+        .bind(&perms_json)
+        .bind(input.daily_cost_limit.unwrap_or(0.0))
+        .bind(input.total_cost_limit.unwrap_or(0.0))
+        .bind(input.max_concurrency.unwrap_or(0))
+        .bind(input.rate_limit_rpm.unwrap_or(0))
+        .bind(&models_json)
+        .bind(input.expires_at)
+        .execute(&state.db)
+        .await
+        .map_err(|e| AppError::Internal(e.into()))?;
+
+        results.push(BatchKeyResult { id, name, key: raw_key });
+    }
+
+    Ok(Json(results))
+}
+
+// ───────────────────── Deleted API Keys ─────────────────────
+
+pub async fn list_deleted_keys(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<ApiKeyRecord>>, AppError> {
+    let rows = sqlx::query_as::<_, ApiKeyRecord>(
+        "SELECT * FROM api_keys WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC",
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| AppError::Internal(e.into()))?;
+    Ok(Json(rows))
+}
+
+pub async fn restore_key(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiKeyRecord>, AppError> {
+    let row = sqlx::query_as::<_, ApiKeyRecord>(
+        "UPDATE api_keys SET deleted_at = NULL, status = 'active' WHERE id = $1 AND deleted_at IS NOT NULL RETURNING *",
+    )
+    .bind(id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| AppError::Internal(e.into()))?
+    .ok_or(AppError::NotFound)?;
+    Ok(Json(row))
 }
 
 // ───────────────────── Response types ─────────────────────

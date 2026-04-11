@@ -116,7 +116,7 @@ fn make_test_key(
         id: uuid::Uuid::new_v4(),
         key_hash: String::new(),
         name: "e2e-test-key".into(),
-        permissions: permissions.into(),
+        permissions: serde_json::from_str(permissions).unwrap_or_default(),
         daily_cost_limit: 0.0,
         total_cost_limit: 0.0,
         max_concurrency: 0,
@@ -124,6 +124,7 @@ fn make_test_key(
         restricted_models: restricted_models.into(),
         status: "active".into(),
         expires_at: None,
+        deleted_at: None,
         created_at: chrono::Utc::now(),
     }
 }

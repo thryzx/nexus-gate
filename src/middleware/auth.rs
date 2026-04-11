@@ -39,9 +39,9 @@ pub async fn require_api_key(
         r#"
         SELECT id, key_hash, name, permissions, daily_cost_limit,
                total_cost_limit, max_concurrency, rate_limit_rpm,
-               restricted_models, status, expires_at, created_at
+               restricted_models, status, expires_at, deleted_at, created_at
         FROM api_keys
-        WHERE key_hash = $1
+        WHERE key_hash = $1 AND deleted_at IS NULL
         "#,
     )
     .bind(&key_hash)

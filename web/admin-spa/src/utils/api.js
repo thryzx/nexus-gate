@@ -257,6 +257,27 @@ export const getQuotaCardStats = () => request.get('/admin/quota-cards/stats')
 
 // ── Users ──
 export const getUsers = () => request.get('/admin/users')
+export const createUser = (data) => request.post('/admin/users', data)
+export const updateUser = (id, data) => request.put(`/admin/users/${id}`, data)
+export const deleteUser = (id) => request.delete(`/admin/users/${id}`)
+export const toggleUserStatus = (id) =>
+  request.put(`/admin/users/${id}/toggle-status`)
+export const resetUserPassword = (id, data) =>
+  request.post(`/admin/users/${id}/reset-password`, data)
+
+// ── Batch API Keys ──
+export const batchCreateApiKeys = (data) =>
+  request.post('/admin/keys/batch', data)
+export const getDeletedApiKeys = () => request.get('/admin/keys/deleted')
+export const restoreApiKey = (id) => request.post(`/admin/keys/${id}/restore`)
+
+// ── Batch Quota Cards ──
+export const batchCreateQuotaCards = (data) =>
+  request.post('/admin/quota-cards/batch', data)
+export const revokeQuotaCard = (id) =>
+  request.put(`/admin/quota-cards/${id}/revoke`)
+export const getRedemptionHistory = (params) =>
+  request.get('/admin/quota-cards/redemptions', { params })
 
 // ── Request Details ──
 export const getRequestDetails = (params) =>

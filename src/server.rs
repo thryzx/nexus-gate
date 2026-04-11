@@ -159,8 +159,11 @@ pub fn build_router(state: AppState) -> Router {
         // Quota Cards
         .route("/admin/quota-cards", get(api::admin_accounts::list_quota_cards))
         .route("/admin/quota-cards", post(api::admin_accounts::create_quota_card))
-        .route("/admin/quota-cards/:id", axum::routing::delete(api::admin_accounts::delete_quota_card))
+        .route("/admin/quota-cards/batch", post(api::admin_accounts::batch_create_quota_cards))
         .route("/admin/quota-cards/stats", get(api::admin_accounts::get_quota_card_stats))
+        .route("/admin/quota-cards/redemptions", get(api::admin_accounts::list_redemptions))
+        .route("/admin/quota-cards/:id", axum::routing::delete(api::admin_accounts::delete_quota_card))
+        .route("/admin/quota-cards/:id/revoke", axum::routing::put(api::admin_accounts::revoke_quota_card))
         // Webhook
         .route("/admin/webhook/config", get(api::admin_accounts::get_webhook_config))
         .route("/admin/webhook/config", post(api::admin_accounts::update_webhook_config))
@@ -169,6 +172,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/admin/webhook/test", post(api::admin_accounts::test_webhook))
         // User Management
         .route("/admin/users", get(api::admin_accounts::list_users))
+        .route("/admin/users", post(api::admin_accounts::create_user))
+        .route("/admin/users/:id", axum::routing::put(api::admin_accounts::update_user))
+        .route("/admin/users/:id", axum::routing::delete(api::admin_accounts::delete_user))
+        .route("/admin/users/:id/toggle-status", axum::routing::put(api::admin_accounts::toggle_user_status))
         // Request Details
         .route("/admin/request-details", get(api::admin_accounts::list_request_details))
         // Model Pricing
@@ -187,9 +194,12 @@ pub fn build_router(state: AppState) -> Router {
         // API Keys
         .route("/admin/keys", get(api::admin::list_keys))
         .route("/admin/keys", post(api::admin::create_key))
+        .route("/admin/keys/batch", post(api::admin::batch_create_keys))
+        .route("/admin/keys/deleted", get(api::admin::list_deleted_keys))
         .route("/admin/keys/:id", get(api::admin::get_key))
         .route("/admin/keys/:id", axum::routing::put(api::admin::update_key))
         .route("/admin/keys/:id", axum::routing::delete(api::admin::delete_key))
+        .route("/admin/keys/:id/restore", post(api::admin::restore_key))
         // Usage
         .route("/admin/usage/records", get(api::admin::usage_records))
         .route("/admin/usage/trends", get(api::admin::usage_trends))

@@ -1293,6 +1293,102 @@ pub async fn get_quota_card_stats(
     })))
 }
 
+// ─── Batch Quota Card Creation ───
+
+#[derive(Deserialize)]
+pub struct BatchCreateQuotaCardsInput {
+    pub name_prefix: Option<String>,
+    pub count: usize,
+    pub value_type: Option<String>,
+    pub value: f64,
+    pub max_redemptions: Option<i32>,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+pub async fn batch_create_quota_cards(
+    State(state): State<AppState>,
+    Json(input): Json<BatchCreateQuotaCardsInput>,
+) -> Result<Json<Vec<QuotaCard>>, AppError> {
+    if input.count == 0 || input.count > 500 {
+        return Err(AppError::BadRequest("count must be 1-500".into()));
+    }
+
+    let mut cards = Vec::with_capacity(input.count);
+    let prefix = input.name_prefix.as_deref().unwrap_or("QC");
+    let value_type = input.value_type.as_deref().unwrap_or("cost_limit");
+    let max_r = input.max_redemptions.unwrap_or(1);
+
+    for _ in 0..input.count {
+        let code = format!("QC-{}", &Uuid::new_v4().to_string()[..8]);
+        let row = sqlx::query_as::<_, QuotaCard>(
+            "INSERT INTO quota_cards (code, name, value_type, value, max_redemptions, expires_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
+        )
+        .bind(&code)
+        .bind(prefix)
+        .bind(value_type)
+        .bind(input.value)
+        .bind(max_r)
+        .bind(input.expires_at)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| AppError::Internal(e.into()))?;
+        cards.push(row);
+    }
+
+    Ok(Json(cards))
+}
+
+// ─── Revoke Quota Card ───
+
+pub async fn revoke_quota_card(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<QuotaCard>, AppError> {
+    let row = sqlx::query_as::<_, QuotaCard>(
+        "UPDATE quota_cards SET status = 'disabled' WHERE id = $1 RETURNING *",
+    )
+    .bind(id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| AppError::Internal(e.into()))?
+    .ok_or(AppError::NotFound)?;
+    Ok(Json(row))
+}
+
+// ─── Redemption History ───
+
+#[derive(sqlx::FromRow, Serialize)]
+pub struct Redemption {
+    pub id: Uuid,
+    pub card_id: Uuid,
+    pub api_key_id: Uuid,
+    pub value: f64,
+    pub revoked: bool,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+pub async fn list_redemptions(
+    State(state): State<AppState>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<Vec<Redemption>>, AppError> {
+    let rows = if let Some(card_id) = params.get("card_id").and_then(|c| c.parse::<Uuid>().ok()) {
+        sqlx::query_as::<_, Redemption>(
+            "SELECT * FROM redemptions WHERE card_id = $1 ORDER BY created_at DESC",
+        )
+        .bind(card_id)
+        .fetch_all(&state.db)
+        .await
+    } else {
+        sqlx::query_as::<_, Redemption>(
+            "SELECT * FROM redemptions ORDER BY created_at DESC LIMIT 200",
+        )
+        .fetch_all(&state.db)
+        .await
+    }
+    .map_err(|e| AppError::Internal(e.into()))?;
+    Ok(Json(rows))
+}
+
 // ─── Webhook Configuration ───
 
 pub async fn get_webhook_config(
@@ -1408,6 +1504,103 @@ pub async fn list_users(
         .await
         .map_err(|e| AppError::Internal(e.into()))?;
     Ok(Json(rows))
+}
+
+#[derive(Deserialize)]
+pub struct CreateUserInput {
+    pub username: String,
+    pub display_name: Option<String>,
+    pub role: Option<String>,
+    pub source: Option<String>,
+    pub max_keys: Option<i32>,
+}
+
+pub async fn create_user(
+    State(state): State<AppState>,
+    Json(input): Json<CreateUserInput>,
+) -> Result<Json<User>, AppError> {
+    let row = sqlx::query_as::<_, User>(
+        "INSERT INTO users (username, display_name, role, source, max_keys) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+    )
+    .bind(&input.username)
+    .bind(input.display_name.as_deref().unwrap_or(""))
+    .bind(input.role.as_deref().unwrap_or("user"))
+    .bind(input.source.as_deref().unwrap_or("local"))
+    .bind(input.max_keys.unwrap_or(5))
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| AppError::Internal(e.into()))?;
+    Ok(Json(row))
+}
+
+#[derive(Deserialize)]
+pub struct UpdateUserInput {
+    pub display_name: Option<String>,
+    pub role: Option<String>,
+    pub source: Option<String>,
+    pub status: Option<String>,
+    pub max_keys: Option<i32>,
+}
+
+pub async fn update_user(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(input): Json<UpdateUserInput>,
+) -> Result<Json<User>, AppError> {
+    let row = sqlx::query_as::<_, User>(
+        r#"
+        UPDATE users
+        SET display_name = COALESCE($2, display_name),
+            role = COALESCE($3, role),
+            source = COALESCE($4, source),
+            status = COALESCE($5, status),
+            max_keys = COALESCE($6, max_keys),
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING *
+        "#,
+    )
+    .bind(id)
+    .bind(&input.display_name)
+    .bind(&input.role)
+    .bind(&input.source)
+    .bind(&input.status)
+    .bind(input.max_keys)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| AppError::Internal(e.into()))?
+    .ok_or(AppError::NotFound)?;
+    Ok(Json(row))
+}
+
+pub async fn delete_user(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let result = sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| AppError::Internal(e.into()))?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound);
+    }
+    Ok(Json(serde_json::json!({ "deleted": true })))
+}
+
+pub async fn toggle_user_status(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<User>, AppError> {
+    let row = sqlx::query_as::<_, User>(
+        "UPDATE users SET status = CASE WHEN status = 'active' THEN 'disabled' ELSE 'active' END, updated_at = NOW() WHERE id = $1 RETURNING *",
+    )
+    .bind(id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| AppError::Internal(e.into()))?
+    .ok_or(AppError::NotFound)?;
+    Ok(Json(row))
 }
 
 // ─── Request Details ───

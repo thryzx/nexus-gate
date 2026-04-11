@@ -102,19 +102,18 @@ async fn check_dedicated_account(
 ) -> Result<Option<AccountRecord>, AppError> {
     // Permissions may contain a dedicated account ID per platform.
     // Parse from key_record.permissions JSON: {"dedicated_accounts": {"claude": "<uuid>", ...}}
-    if let Ok(perms) = serde_json::from_str::<serde_json::Value>(&key_record.permissions) {
-        if let Some(account_id_str) = perms["dedicated_accounts"][platform].as_str() {
-            if let Ok(account_id) = account_id_str.parse::<uuid::Uuid>() {
-                let record = sqlx::query_as::<_, AccountRecord>(
-                    "SELECT * FROM accounts WHERE id = $1 AND status = 'active'",
-                )
-                .bind(account_id)
-                .fetch_optional(&state.db)
-                .await
-                .map_err(|e| AppError::Internal(e.into()))?;
+    let perms = &key_record.permissions;
+    if let Some(account_id_str) = perms["dedicated_accounts"][platform].as_str() {
+        if let Ok(account_id) = account_id_str.parse::<uuid::Uuid>() {
+            let record = sqlx::query_as::<_, AccountRecord>(
+                "SELECT * FROM accounts WHERE id = $1 AND status = 'active'",
+            )
+            .bind(account_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| AppError::Internal(e.into()))?;
 
-                return Ok(record);
-            }
+            return Ok(record);
         }
     }
     Ok(None)

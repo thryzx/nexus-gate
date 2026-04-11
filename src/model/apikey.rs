@@ -9,7 +9,7 @@ pub struct ApiKeyRecord {
     pub id: Uuid,
     pub key_hash: String,
     pub name: String,
-    pub permissions: String,  // JSON array: ["claude","openai"] or "[]" for all
+    pub permissions: serde_json::Value,  // JSON array: ["claude","openai"] or [] for all
     pub daily_cost_limit: f64,
     pub total_cost_limit: f64,
     pub max_concurrency: i32,
@@ -17,6 +17,7 @@ pub struct ApiKeyRecord {
     pub restricted_models: String, // JSON array of allowed model names, empty = all
     pub status: String,            // "active" | "disabled"
     pub expires_at: Option<DateTime<Utc>>,
+    pub deleted_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -24,7 +25,7 @@ impl ApiKeyRecord {
     /// Check if this key has permission for the given service.
     /// Empty permissions = all services allowed (CRS parity).
     pub fn has_permission(&self, service: &str) -> bool {
-        let perms: Vec<String> = serde_json::from_str(&self.permissions).unwrap_or_default();
+        let perms: Vec<String> = serde_json::from_value(self.permissions.clone()).unwrap_or_default();
         perms.is_empty() || perms.iter().any(|p| p == service || p == "all")
     }
 
@@ -70,7 +71,7 @@ mod tests {
             id: Uuid::new_v4(),
             key_hash: String::new(),
             name: "test".into(),
-            permissions: permissions.into(),
+            permissions: serde_json::from_str(permissions).unwrap_or_default(),
             daily_cost_limit: 0.0,
             total_cost_limit: 0.0,
             max_concurrency: 0,
@@ -78,6 +79,7 @@ mod tests {
             restricted_models: restricted_models.into(),
             status: "active".into(),
             expires_at: None,
+            deleted_at: None,
             created_at: Utc::now(),
         }
     }
